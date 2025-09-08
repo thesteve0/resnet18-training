@@ -1,0 +1,244 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: resnet18-training-pipeline
+  namespace: rhoai-learning
+spec:
+  description: ResNet-18 CIFAR-10 training pipeline with RHOAI integration
+  params:
+    - name: git-url
+      type: string
+      default: "https://github.com/thesteve0/resnet18-training.git"
+    - name: git-revision
+      type: string
+      default: "main"
+    - name: epochs
+      type: string
+      default: "10"
+    - name: batch-size
+      type: string
+      default: "32"
+    - name: learning-rate
+      type: string
+      default: "0.001"
+  workspaces:
+    - name: source-code
+    - name: training-data
+    - name: model-output
+    
+  tasks:
+    - name: git-clone
+      taskRef:
+        name: git-clone
+        kind: ClusterTask
+      workspaces:
+        - name: output
+          workspace: source-code
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.git-revision)
+
+    - name: prepare-data
+      runAfter:
+        - git-clone
+      taskSpec:
+        workspaces:
+          - name: source
+          - name: data
+        steps:
+          - name: create-data-dir
+            image: registry.redhat.io/ubi8/ubi:latest
+            script: |
+              #!/bin/bash
+              echo "Creating data directory structure..."
+              mkdir -p $(workspaces.data.path)/cifar10
+              echo "Data directory prepared"
+        workspaces:
+          - name: source
+            workspace: source-code
+          - name: data
+            workspace: training-data
+
+    - name: pytorch-training
+      runAfter:
+        - prepare-data
+      taskSpec:
+        params:
+          - name: epochs
+          - name: batch-size  
+          - name: learning-rate
+        workspaces:
+          - name: source
+          - name: data
+          - name: models
+        steps:
+          - name: train-model
+            image: quay.io/modh/training:py311-cuda124-torch251
+            env:
+              - name: EPOCHS
+                value: $(params.epochs)
+              - name: BATCH_SIZE
+                value: $(params.batch-size)
+              - name: LEARNING_RATE
+                value: $(params.learning-rate)
+              - name: DATA_DIR
+                value: $(workspaces.data.path)
+              - name: OUTPUT_DIR
+                value: $(workspaces.models.path)
+            script: |
+              #!/bin/bash
+              set -e
+              
+              echo "Installing requirements..."
+              cd $(workspaces.source.path)
+              pip install -r requirements.txt
+              
+              echo "Starting ResNet-18 training..."
+              echo "Configuration:"
+              echo "  Epochs: $EPOCHS"
+              echo "  Batch Size: $BATCH_SIZE"
+              echo "  Learning Rate: $LEARNING_RATE"
+              echo "  Data Dir: $DATA_DIR"
+              echo "  Output Dir: $OUTPUT_DIR"
+              
+              python resnet-training-cifar.py
+              
+              echo "Training completed successfully!"
+              
+              # Create a summary file for the pipeline
+              cat > $(workspaces.models.path)/pipeline-summary.txt << EOF
+              ResNet-18 CIFAR-10 Training Summary
+              ===================================
+              Epochs: $EPOCHS
+              Batch Size: $BATCH_SIZE
+              Learning Rate: $LEARNING_RATE
+              Completed: $(date)
+              EOF
+            resources:
+              requests:
+                cpu: "4"
+                memory: "16Gi"
+                nvidia.com/gpu: "1"
+              limits:
+                cpu: "6"
+                memory: "24Gi"
+                nvidia.com/gpu: "1"
+      params:
+        - name: epochs
+          value: $(params.epochs)
+        - name: batch-size
+          value: $(params.batch-size)
+        - name: learning-rate
+          value: $(params.learning-rate)
+      workspaces:
+        - name: source
+          workspace: source-code
+        - name: data
+          workspace: training-data
+        - name: models
+          workspace: model-output
+
+    - name: evaluate-model
+      runAfter:
+        - pytorch-training
+      taskSpec:
+        workspaces:
+          - name: source
+          - name: models
+        steps:
+          - name: model-evaluation
+            image: quay.io/modh/training:py311-cuda124-torch251
+            script: |
+              #!/bin/bash
+              set -e
+              
+              cd $(workspaces.models.path)
+              
+              echo "Model Evaluation Results"
+              echo "========================"
+              
+              if [ -f "training_summary.json" ]; then
+                echo "Training Summary:"
+                cat training_summary.json | python3 -m json.tool
+              fi
+              
+              if [ -f "training_history.json" ]; then
+                echo -e "\nTraining History (last 3 epochs):"
+                cat training_history.json | python3 -c "
+              import json, sys
+              data = json.load(sys.stdin)
+              for epoch in data[-3:]:
+                  print(f\"Epoch {epoch['epoch']}: Train Acc={epoch['train_acc']:.2f}%, Val Acc={epoch['val_acc']:.2f}%\")
+              "
+              fi
+              
+              echo -e "\nFiles created:"
+              ls -la $(workspaces.models.path)/
+              
+              # Create evaluation report
+              cat > $(workspaces.models.path)/evaluation-report.md << 'EOF'
+              # ResNet-18 CIFAR-10 Training Report
+              
+              This model was trained using OpenShift Pipelines with Red Hat OpenShift AI.
+              
+              ## Training Configuration
+              - Model: ResNet-18 adapted for CIFAR-10
+              - Dataset: CIFAR-10 (32x32 RGB images, 10 classes)
+              - GPU: NVIDIA L40S
+              
+              ## Artifacts
+              - `best_model.pth`: Best performing model checkpoint
+              - `final_model.pth`: Final trained model
+              - `training_history.json`: Complete training metrics
+              - `training_summary.json`: Training configuration and results
+              - `tensorboard/`: TensorBoard logs for visualization
+              
+              EOF
+        workspaces:
+          - name: source
+            workspace: source-code
+          - name: models
+            workspace: model-output
+---
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: resnet18-training-run
+  namespace: rhoai-learning
+spec:
+  pipelineRef:
+    name: resnet18-training-pipeline
+  params:
+    - name: git-url
+      value: "https://github.com/thesteve0/resnet18-training.git"
+    - name: git-revision
+      value: "main"
+    - name: epochs
+      value: "5"  # Reduced for testing
+    - name: batch-size
+      value: "64"
+    - name: learning-rate
+      value: "0.001"
+  workspaces:
+    - name: source-code
+      persistentVolumeClaim:
+        claimName: workspace-pvc
+    - name: training-data
+      persistentVolumeClaim:
+        claimName: cifar10-data-pvc
+    - name: model-output
+      persistentVolumeClaim:
+        claimName: trained-models-pvc
+  # Add tolerations and node selector for GPU scheduling
+  podTemplate:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+    tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node.kubernetes.io/instance-type"
+        operator: "Exists"
+        effect: "NoSchedule"

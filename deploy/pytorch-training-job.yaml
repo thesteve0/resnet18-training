@@ -4,6 +4,8 @@ metadata:
   name: resnet18-cifar10-git
   namespace: rhoai-learning
 spec:
+  # Increase timeout for on-demand GPU node provisioning (20+ minutes)
+  activeDeadlineSeconds: 7200
   pytorchReplicaSpecs:
     Master:
       replicas: 1
@@ -13,9 +15,16 @@ spec:
           labels:
             app: resnet18-cifar10-training
         spec:
-          # Add tolerations for GPU nodes
+          # Ensure scheduling on GPU nodes
+          nodeSelector:
+            nvidia.com/gpu.present: "true"
+          
+          # Add tolerations for GPU nodes - RHOAI specific
           tolerations:
             - key: "nvidia.com/gpu"
+              operator: "Exists"
+              effect: "NoSchedule"
+            - key: "node.kubernetes.io/instance-type"
               operator: "Exists"
               effect: "NoSchedule"
 
@@ -33,14 +42,12 @@ spec:
             - name: pytorch
               image: quay.io/modh/training:py311-cuda124-torch251
 
-              # Install requirements and execute script
+              # Skip package installation - use what's in the base image
               command:
                 - "/bin/bash"
                 - "-c"
                 - |
-                  echo "Installing requirements from /shared/code/requirements.txt"
-                  pip install -r /shared/code/requirements.txt
-                  echo "Starting training..."
+                  echo "Starting training with existing packages..."
                   python /shared/code/resnet-training-cifar.py
 
               # Working directory for training outputs
