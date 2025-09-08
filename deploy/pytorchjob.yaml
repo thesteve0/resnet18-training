@@ -1,0 +1,4 @@
+initContainers:
+  - name: git-clone
+    image: alpine/git:latest
+    command: ["git", "clone", "https://github.com/thesteve0/resnet18-training.git", "/shared/code"]

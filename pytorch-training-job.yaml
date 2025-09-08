@@ -1,0 +1,84 @@
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  name: resnet18-cifar10-git
+  namespace: rhoai-learning
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        metadata:
+          labels:
+            app: resnet18-cifar10-training
+        spec:
+          # Git clone initialization - no ConfigMap needed!
+          initContainers:
+            - name: git-clone
+              image: alpine/git:latest
+              command: ["git", "clone", "https://github.com/your-username/resnet18-training.git", "/shared/code"]
+              volumeMounts:
+                - name: code-volume
+                  mountPath: /shared/code
+
+          # Main training container
+          containers:
+            - name: pytorch
+              image: quay.io/modh/training:py311-cuda124-torch251
+
+              # Execute your script from the cloned repository
+              command: ["python", "/shared/code/train.py"]
+
+              # Working directory for training outputs
+              workingDir: /shared/workspace
+
+              # Resource allocation - adjust based on your cluster
+              resources:
+                requests:
+                  cpu: "4"
+                  memory: "16Gi"
+                  nvidia.com/gpu: "1"
+                limits:
+                  cpu: "6"
+                  memory: "24Gi"
+                  nvidia.com/gpu: "1"
+
+              # Environment variables for your training script
+              env:
+                - name: EPOCHS
+                  value: "10"
+                - name: BATCH_SIZE
+                  value: "32"
+                - name: LEARNING_RATE
+                  value: "0.001"
+                - name: DATA_DIR
+                  value: "/shared/data"
+                - name: OUTPUT_DIR
+                  value: "/shared/models"
+
+              # Volume mounts for code, data, and model storage
+              volumeMounts:
+                - name: code-volume
+                  mountPath: /shared/code
+                  readOnly: true
+                - name: data-volume
+                  mountPath: /shared/data
+                - name: models-volume
+                  mountPath: /shared/models
+                - name: workspace-volume
+                  mountPath: /shared/workspace
+
+          # Shared volumes across containers
+          volumes:
+            - name: code-volume
+              emptyDir: {}
+            - name: data-volume
+              persistentVolumeClaim:
+                claimName: cifar10-data-pvc
+            - name: models-volume
+              persistentVolumeClaim:
+                claimName: trained-models-pvc
+            - name: workspace-volume
+              persistentVolumeClaim:
+                claimName: workspace-pvc
