@@ -28,7 +28,7 @@ spec:
               image: quay.io/modh/training:py311-cuda124-torch251
 
               # Execute your script from the cloned repository
-              command: ["python", "/shared/code/train.py"]
+              command: ["python", "/shared/code/resnet-training-cifar.py"]
 
               # Working directory for training outputs
               workingDir: /shared/workspace
