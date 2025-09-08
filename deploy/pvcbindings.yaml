@@ -11,7 +11,7 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  storageClassName: gp2  # Adjust based on your cluster's storage classes
+  storageClassName: gp3-csi  # Adjust based on your cluster's storage classes
 
 ---
 # PVC for trained models and checkpoints
@@ -26,7 +26,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  storageClassName: gp2  # Adjust based on your cluster's storage classes
+  storageClassName: gp3-csi  # Adjust based on your cluster's storage classes
 
 ---
 # PVC for workspace (logs, temporary files)
@@ -41,4 +41,4 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  storageClassName: gp2  # Adjust based on your cluster's storage classes
+  storageClassName: gp3-csi  # Adjust based on your cluster's storage classes

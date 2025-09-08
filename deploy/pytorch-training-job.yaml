@@ -13,11 +13,17 @@ spec:
           labels:
             app: resnet18-cifar10-training
         spec:
+          # Add tolerations for GPU nodes
+          tolerations:
+            - key: "nvidia.com/gpu"
+              operator: "Exists"
+              effect: "NoSchedule"
+
           # Git clone initialization - no ConfigMap needed!
           initContainers:
             - name: git-clone
               image: alpine/git:latest
-              command: ["git", "clone", "https://github.com/your-username/resnet18-training.git", "/shared/code"]
+              command: ["git", "clone", "https://github.com/thesteve0/resnet18-training.git", "/shared/code"]
               volumeMounts:
                 - name: code-volume
                   mountPath: /shared/code
@@ -27,8 +33,15 @@ spec:
             - name: pytorch
               image: quay.io/modh/training:py311-cuda124-torch251
 
-              # Execute your script from the cloned repository
-              command: ["python", "/shared/code/resnet-training-cifar.py"]
+              # Install requirements and execute script
+              command:
+                - "/bin/bash"
+                - "-c"
+                - |
+                  echo "Installing requirements from /shared/code/requirements.txt"
+                  pip install -r /shared/code/requirements.txt
+                  echo "Starting training..."
+                  python /shared/code/resnet-training-cifar.py
 
               # Working directory for training outputs
               workingDir: /shared/workspace
