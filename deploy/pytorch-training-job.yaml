@@ -4,8 +4,7 @@ metadata:
   name: resnet18-cifar10-git
   namespace: rhoai-learning
 spec:
-  # Increase timeout for on-demand GPU node provisioning (20+ minutes)
-  activeDeadlineSeconds: 7200
+
   pytorchReplicaSpecs:
     Master:
       replicas: 1
@@ -42,12 +41,12 @@ spec:
             - name: pytorch
               image: quay.io/modh/training:py311-cuda124-torch251
 
-              # Skip package installation - use what's in the base image
+              # Install compatible torchvision version
               command:
                 - "/bin/bash"
                 - "-c"
                 - |
-                  echo "Starting training with existing packages..."
+                  pip install --no-cache-dir torchvision==0.20.0 
                   python /shared/code/resnet-training-cifar.py
 
               # Working directory for training outputs
@@ -69,9 +68,9 @@ spec:
                 - name: EPOCHS
                   value: "10"
                 - name: BATCH_SIZE
-                  value: "32"
+                  value: "1024"
                 - name: LEARNING_RATE
-                  value: "0.001"
+                  value: "0.003"
                 - name: DATA_DIR
                   value: "/shared/data"
                 - name: OUTPUT_DIR
