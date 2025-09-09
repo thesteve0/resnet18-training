@@ -3,6 +3,15 @@ kind: PyTorchJob
 metadata:
   name: resnet18-cifar10-git
   namespace: rhoai-learning
+  labels:
+    app.kubernetes.io/name: resnet18-cifar10-training
+    app.kubernetes.io/managed-by: training-operator
+    opendatahub.io/component: training-operator
+    batch.kubernetes.io/job-name: resnet18-cifar10-git
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/metrics"
+    prometheus.io/port: "8080"
 spec:
 
   pytorchReplicaSpecs:
@@ -13,6 +22,14 @@ spec:
         metadata:
           labels:
             app: resnet18-cifar10-training
+            app.kubernetes.io/name: resnet18-cifar10-training
+            app.kubernetes.io/managed-by: training-operator
+            opendatahub.io/component: training-operator
+            batch.kubernetes.io/job-name: resnet18-cifar10-git
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/path: "/metrics"
+            prometheus.io/port: "8080"
         spec:
           # Ensure scheduling on GPU nodes
           nodeSelector:
